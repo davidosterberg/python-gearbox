@@ -461,8 +461,8 @@ class Pitting(object):
         sigmahpone = pair.gear_one.material.sh_limit * znt_one * zl * zv * zr * zw_one * zx / pair.sh_min
         sigmahptwo = pair.gear_two.material.sh_limit * znt_two * zl * zv * zr * zw_two * zx / pair.sh_min
 
-        shone = znt_one * zl * zv * zr * zw_one * zx / sigmahone
-        shtwo = znt_two * zl * zv * zr * zw_two * zx / sigmahtwo
+        sh_one = znt_one * zl * zv * zr * zw_one * zx / sigmahone
+        sh_two = znt_two * zl * zv * zr * zw_two * zx / sigmahtwo
 
         return {
             'sigmaH': sigmahone,
@@ -485,7 +485,9 @@ class Pitting(object):
             'zx': zx,
             'kv': kv,
             'khb': khb,
-            'kha': kha
+            'kha': kha,
+            'sh_one': sh_one,
+            'sh_two': sh_two
         }
 
     @staticmethod
@@ -687,7 +689,6 @@ class Bending(object):
     def __init__(self, transmission):
         self.transmission = transmission
 
-    @property
     def calculate(self):
         """
 
@@ -733,8 +734,8 @@ class Bending(object):
         sigmafpone = sigmaflimitone * yst * yntone * ydeltaone * yrelone * yxone / sfmin
         sigmafptwo = sigmaflimittwo * yst * ynttwo * ydeltatwo * yreltwo * yxtwo / sfmin
 
-        sfone = sigmaflimitone * ysone * yntone * ydeltaone * yrelone / sigmafone
-        sftwo = sigmaflimittwo * ystwo * ynttwo * ydeltatwo * yreltwo / sigmaftwo
+        sf_one = sigmaflimitone * ysone * yntone * ydeltaone * yrelone / sigmafone
+        sf_two = sigmaflimittwo * ystwo * ynttwo * ydeltatwo * yreltwo / sigmaftwo
 
         return {
             'sigmafone': sigmafone,
@@ -760,7 +761,9 @@ class Bending(object):
             'yreltwo': yreltwo,
             'kv': kv,
             'kfa': kfa,
-            'kfb': kfb
+            'kfb': kfb,
+            'sf_one': sf_one,
+            'sf_two': sf_two
         }
 
     @staticmethod
