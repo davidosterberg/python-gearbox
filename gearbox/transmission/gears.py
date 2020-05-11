@@ -6,42 +6,59 @@ from gearbox.libs.maths import involute, arcinvolute
 class Tool(object):
     """
 
-    :param ha_p:
-    :param hf_p:
-    :param rho_fp:
-    :param x:
-    :param rho_ao:
-    :param delta_ao:
-    :param nc:
+    :param ha_p: addendum of basic rack of cylindrical gears. Normally: ha_p=m.  [mm]
+    :param hf_p: dedendum of basic rack of cylindrical gears. Normally: hf_p=1.2*m. [mm}
+    :param rho_fp: root fillet radius of the basic rack for cylindrical gears. [mm]
+    :param x: profile shift coefficient
+    :param c: the tooth tip/root clearance [mm]
+    :param alpha_pn: normal pressure angle of the basic rack for cylindrical gears [°]
+    :param nc: Only if calculations according to AGMA are needed
+    :param rho_ao: Only if calculations according to AGMA are needed
+    :param delta_ao: Only if calculations according to AGMA are needed
     """
 
-    def __init__(self, ha_p, hf_p, rho_fp, x, rho_ao, delta_ao, nc, c=0.25):
+    def __init__(self, ha_p, hf_p, rho_fp, c, x, alpha_pn, nc=None, rho_ao=None, delta_ao=None):
         self.ha_p = ha_p
         self.hf_p = hf_p
         self.rho_fp = rho_fp
         self.c = c
-        self.nc = nc
         self.x = x
+        self.alpha_pn = alpha_pn
+        self.nc = nc
         self.rho_ao = rho_ao
         self.delta_ao = delta_ao
+        
 
 
 class Material(object):
     """
 
-    :param sh_limit:
-    :param sf_limit:
-    :param brinell:
+    :param sigma_h_lim: Allowable hertzian stress [MPa]
+    :param sigma_f_lim: Allowable bending stress [MPa]
+    :param brinell: Brinell hardness of the tooth flanks.
     :param classification:
-    :param name:
-    :param e:
-    :param poisson:
-    :param density:
+            'St'            Wrought normalized low carbon steels
+            'St(cast)'      Cast steels
+            'GTS(perl)'     Black malleable cast iron (perlitic structure)
+            'GGG(ferr)'     Nodular cast iron (perlitic, Cast iron materials bainitic, ferritic structure)
+            'GG'            Grey cast iron
+            'V'             Through-hardened wrought steels Carbon steels, alloy steels
+            'V(cast)'       Through-hardened cast steels Carbon steels, alloy steels
+            'Eh'            Case-hardened wrought steels
+            'IF'            Flame or induction hardened wrought or cast steels
+            'NT(nitr)'      Nitrided wrought steels - Nitriding steels
+            'NV(nitr)'      Nitrided wrought steels - Through-hardening steels
+            'NV(nitrocar)'  Wrought steels, nitrocarburized Through hardening steels
+            
+    :param name: Material designation
+    :param e: Elastic modulus [MPa]
+    :param poisson: Poisson ratio of material
+    :param density: Material density [kg/mm**3]
     """
 
-    def __init__(self, sh_limit, sf_limit, brinell, classification, name='', e=206000., poisson=0.3, density=7.83e-6):
-        self.sh_limit = sh_limit
-        self.sf_limit = sf_limit
+    def __init__(self, sigma_h_lim, sigma_f_lim, brinell, classification, name='', e=206000., poisson=0.3, density=7.83e-6):
+        self.sigma_h_lim = sigma_h_lim
+        self.sigma_f_lim = sigma_f_lim
         self.classification = classification
         self.name = name
         self.e = e
@@ -53,8 +70,8 @@ class Material(object):
 class Lubricant(object):
     """
 
-    :param v40:
-    :param name:
+    :param v40: Viscosity at 40°C, Unit: mm**2/s = cSt
+    :param name: Designation
     """
 
     def __init__(self, v40, name=''):
@@ -85,7 +102,6 @@ class Gear(object):
     :param gear_crown:
     :param gear_condition:
     :param helix_modification:
-    :param favorable_contact:
     """
 
     def __init__(self, **kw):
@@ -111,11 +127,6 @@ class Gear(object):
             self.gear_crown = kw['gear'].gear_crown
             self.helix_modification = kw['gear'].helix_modification
 
-            if kw['gear'].favorable_contact:
-                self.favorable_contact = 1
-            else:
-                self.favorable_contact = 0
-
             self.gear_condition = kw['gear'].gear_condition
 
         else:
@@ -140,22 +151,17 @@ class Gear(object):
             self.gear_crown = kw['gear_crown']
             self.helix_modification = kw['helix_modification']
 
-            if kw['favorable_contact']:
-                self.favorable_contact = 1
-            else:
-                self.favorable_contact = 0
-
             self.gear_condition = kw['gear_condition']
 
         self.xmin = (1 - sqrt(self.z * sin(radians(self.alpha)))) / 2
         self.alpha_t = degrees(atan(tan(radians(self.alpha)) / cos(radians(self.beta))))
-        self.d = self.m * self.z / cos(radians(self.beta))
-        self.da = self.m * (self.z / cos(radians(self.beta)) + 2 * (self.profile.ha_p + self.x))
-        self.df = self.d - 2 * self.m * (self.profile.ha_p + self.profile.c - self.x)
-        self.db = self.d * cos(radians(self.alpha_t))
-        self.addendum = self.m * (self.profile.ha_p + self.x)
-        self.dedendum = self.m * (self.profile.hf_p - self.x)
+        self.addendum = self.m * (1 + self.x)
+        self.dedendum = self.m * (1 - self.x) + self.profile.c
         self.h = self.dedendum + self.addendum
+        self.d = self.m * self.z / cos(radians(self.beta))
+        self.da = self.d + 2*self.addendum   
+        self.df = self.d - 2*self.dedendum
+        self.db = self.d * cos(radians(self.alpha_t))
         self.rho_f = self.profile.rho_fp * self.m
         self.mt = self.m / cos(radians(self.beta))
         self.p_b = self.m * cos(radians(self.alpha)) * pi
@@ -186,7 +192,7 @@ class Gear(object):
         self.f_h_alpha = self.__q(f_h_alpha, self.precision_grade)
         self.f_h_beta = self.__q(f_h_beta, self.precision_grade)
         self.f_f_beta = self.__q(f_h_beta, self.precision_grade)
-        self.f_h_beta5 = self.__q(f_h_beta, 5)
+        self.f_h_beta6 = self.__q(f_h_beta, 6)
 
     @staticmethod
     def __interval_calc(intervals, attr):
@@ -211,6 +217,7 @@ class Gear(object):
 
 class Transmission(object):
     """
+    
     :param lubricant:
     :param rpm_in: the rotation speed of the first gear
     :param gear_box_type: used for AGMA calculation
@@ -220,43 +227,44 @@ class Transmission(object):
     :param ka: the application factor
     :param sf_min: the minimum safety factor for tooth bending
     :param sh_min: the minumum safety factor for flank pitting
+    :param favorable_contact: Can be set True if the contact pattern is known to be good.
     """
 
     def __init__(self, **kw):
 
-        if 'transmission' in kw:
-            gear_one = Gear(gear=kw['transmission'].gear_one)
-            gear_two = Gear(gear=kw['transmission'].gear_two)
-            gears = [gear_one, gear_two]
-            self.rpm_in = kw['transmission'].rpm_in
-            self.rpm_out = gear_one.z/gear_two.z*self.rpm_in
-            self.ka = kw['transmission'].ka
-            self.sh_min = kw['transmission'].sh_min
-            self.sf_min = kw['transmission'].sf_min
+        gears = kw['gears']
+        self.rpm_in = kw['rpm_in']
+        self.rpm_out = gears[0].z/gears[1].z*self.rpm_in
+        self.ka = kw['ka']
+        self.sh_min = kw['sh_min']
+        self.sf_min = kw['sf_min']
 
-            self.v40 = kw['transmission'].v40
-            self.gear_box_type = kw['transmission'].gear_box_type
+        self.v40 = kw['lubricant'].v40
+        self.gear_box_type = kw['gear_box_type']
 
-            self.u = kw['transmission'].rpm_out / kw['transmission'].rpm_in
-            self.p = kw['transmission'].p
-            self.l = kw['transmission'].l
+        self.u = self.rpm_out / self.rpm_in
+        self.p = kw['p']
+        self.l = kw['l']
+        self.favorable_contact = kw['favorable_contact']
+
+        if 'k_h_alpha' in kw:
+            self.k_h_alpha = kw['k_h_alpha']
         else:
-            gears = kw['gears']
-            self.rpm_in = kw['rpm_in']
-            self.rpm_out = gears[0].z/gears[1].z*self.rpm_in
-            self.ka = kw['ka']
-            self.sh_min = kw['sh_min']
-            self.sf_min = kw['sf_min']
+            self.k_h_alpha = None
 
-            self.v40 = kw['lubricant'].v40
-            self.gear_box_type = kw['gear_box_type']
+        if 'k_h_beta' in kw:
+            self.k_h_beta = kw['k_h_beta']
+        else:
+            self.k_h_beta = None
+        
+        if 'k_f_beta' in kw:
+            self.k_f_beta = kw['k_f_beta']    
+        else:
+            self.k_f_beta = None
+            
+        self.pair = self.__calculate(gears[0], gears[1])
 
-            self.u = self.rpm_out / self.rpm_in
-            self.p = kw['p']
-            self.l = kw['l']
-        self.pair = self.__calculate(gears[0], gears[1], self.rpm_in, self.rpm_out)
-
-    def __calculate(self, gear_one, gear_two, rpm_in, rpm_out):
+    def __calculate(self, gear_one, gear_two):
         if gear_one.m is not gear_two.m:
             raise Exception("the modulus of the two gears most be equal")
         else:
@@ -268,28 +276,24 @@ class Transmission(object):
             self.alpha = gear_one.alpha
             self.alpha_t = gear_one.alpha_t
 
-        self.u_real = gear_two.z / gear_one.z
-        self.u = rpm_in / rpm_out
-        self.u_error = abs(1 - (self.u_real / self.u)) * 100
+        self.u = gear_two.z / gear_one.z
         inv = involute(gear_one.alpha_t) + 2 * (gear_one.x + gear_two.x) / (gear_one.z + gear_two.z) * tan(
             radians(gear_one.alpha))
         self.alpha_wt = arcinvolute(inv)
         self.a = ((gear_one.z + gear_two.z) * gear_one.m) / (2 * cos(radians(gear_one.beta)))
         self.aw = self.a * cos(radians(gear_one.alpha)) / cos(radians(self.alpha_wt))
-        self.epsilon_alpha = (0.5 * (
-        sqrt(gear_one.da ** 2 - gear_one.db ** 2) + sqrt(gear_two.da ** 2 - gear_two.db ** 2)) - self.a * sin(
-            radians(self.alpha_wt))) / (
-                             pi * gear_one.m * cos(radians(gear_one.alpha_t)) / (cos(radians(gear_one.beta))))
+        self.epsilon_alpha = (
+            0.5 * (sqrt(gear_one.da ** 2 - gear_one.db ** 2) + sqrt(gear_two.da ** 2 - gear_two.db ** 2)) - self.a * sin(
+                radians(self.alpha_wt))) / (pi * gear_one.m * cos(radians(gear_one.alpha_t)) / cos(radians(gear_one.beta)))
         self.epsilon_beta = gear_one.b * sin(radians(gear_one.beta)) / (gear_one.m * pi)
         self.epsilon_gama = self.epsilon_alpha + self.epsilon_beta
-        self.v = rpm_in * gear_one.d * pi / 60000
-        self.ft = 1000. * self.p * 60000 / (pi * gear_one.d * rpm_in)
+        self.v = self.rpm_in * gear_one.d * pi / 60000
+        self.ft = 1000. * self.p / self.v
         if self.ka * self.ft / gear_one.b < 100:
             self.fmt = 100
         else:
             self.fmt = self.ka * self.ft / gear_one.b
 
-        # self.xsum = ((gear_one.z + gear_two.z) * (involute(radians(self.alpha_wt))-involute(radians(self.alpha_t))))/(2*tan(radians(self.alpha)))
         self.xsum = gear_one.x + gear_two.x
         self.gear_one = gear_one
         self.gear_two = gear_two

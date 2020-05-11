@@ -18,8 +18,8 @@ lubricant = Lubricant(
 material = Material(
     name='AISI 2010',
     classification='NV(nitrocar)',
-    sh_limit=1500.,
-    sf_limit=460.,
+    sigma_h_lim=1500.,
+    sigma_f_lim=460.,
     e=206000.,
     poisson=0.3,
     density=7.83e-6,
@@ -27,13 +27,15 @@ material = Material(
 )
 
 tool = Tool(
-    ha_p=1,
-    hf_p=1.25,
-    rho_fp=0.38,
+    ha_p=1*module,
+    hf_p=1.25*module,
+    rho_fp=0.38*module,
+    c = 0.25*module,
     x=0,
+    alpha_pn=pressure_angle,
+    nc=10.,
     rho_ao=0,
-    delta_ao=0,
-    nc=10.
+    delta_ao=0
 )
 
 pinion = Gear(
@@ -46,7 +48,7 @@ pinion = Gear(
     x=0.525,
     b=34.0,
     bs=34.0,
-    sr=0.0,
+    sr='solid',
     rz=3.67,
     precision_grade=6.0,
     shaft_diameter=35.0,
@@ -70,7 +72,7 @@ gear = Gear(
     x=-0.275,
     b=34.0,
     bs=34.0,
-    sr=0.0,
+    sr='solid',
     rz=3.67,
     precision_grade=6.0,
     shaft_diameter=50.0,
@@ -80,7 +82,6 @@ gear = Gear(
     backlash=-0.017,
     gear_crown=1,
     helix_modification=1,
-    favorable_contact=True,
     gear_condition=1
 )
 
@@ -95,7 +96,8 @@ transmission = Transmission(
     gear_box_type=2,
     ka=1.3,
     sh_min=1,
-    sf_min=1
+    sf_min=1,
+    favorable_contact=True,
 )
 
 print ('========================================')
@@ -105,7 +107,7 @@ print ('========================================')
 
 print ('========================================')
 print ('ISO Bending')
-print (isoBending(transmission=transmission).calculate)
+print (isoBending(transmission=transmission).calculate())
 print ('========================================')
 
 print ('========================================')

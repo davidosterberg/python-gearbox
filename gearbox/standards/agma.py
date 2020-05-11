@@ -122,7 +122,7 @@ def __geometryfactor__(pair):
     delta_sn2 = pair.gear_two.backlash
     ro1 = (pair.gear_one.da / 2) / mn
     ro2 = (pair.gear_two.da / 2) / mn
-    mg = pair.u_real
+    mg = pair.u
     r1 = n1 / (2 * cos(psi))
     r2 = r1 * mg
     cr = r1 + r2
@@ -373,7 +373,7 @@ def __loaddistribution__(pair):
 def __rimthicknessfactor__(pair):
     ht = pair.gear_one.h
 
-    if pair.gear_one.sr == 0:
+    if pair.gear_one.sr == 'solid':
         tr = pair.gear_one.df - pair.gear_one.shaft_diameter
     else:
         tr = pair.gear_one.sr

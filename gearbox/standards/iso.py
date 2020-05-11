@@ -6,31 +6,49 @@ from gearbox.transmission.gears import *
 
 
 def __c__(pair):
-    x = [0, 0.04723, 0.15551, 0.25791, -0.00635, -0.11654, -0.00193, -0.24188, 0.00529, 0.00182]
-    qp = x[1] + (x[2] / pair.gear_one.zn) + (x[3] / pair.gear_two.zn) + (x[4] * pair.gear_one.x) + (
-        x[5] * pair.gear_one.x / pair.gear_one.zn) + (x[6] * pair.gear_two.x) + (
-        x[7] * pair.gear_two.x / pair.gear_two.zn) + (x[8] * pair.gear_one.x ** 2) + (x[9] * pair.gear_two.x ** 2)
 
-    beq = pair.gear_one.bs / pair.gear_one.b
+    gear_one, gear_two = pair.gear_one, pair.gear_two
+    
+    if gear_one.x < gear_two.x or not (-0.5 <= gear_one.x + gear_two.x <= 2): 
+        raise Exception("Conditions for single stiffness regression not fulfiled. x1 < x2 or x1+x2 not in [-0.5, 2]")
+    
+    zn1 = pair.gear_one.zn
+    x1 = pair.gear_one.x
+    zn2 = pair.gear_two.zn
+    x2 = pair.gear_two.x
+    
+    c = [0, 0.04723, 0.15551, 0.25791, -0.00635, -0.11654, -0.00193, -0.24188, 0.00529, 0.00182]
+    qp = c[1] + c[2]/zn1 + c[3]/zn2 + c[4]*x1 + c[5]*x1/zn1 + c[6]*x2 + c[7]*x2/zn2 + c[8]*x1**2 + c[9]*x2**2
+    cth = 1 / qp
+    
+    cm = 0.8  # correction factor for solid disk gears
+        
+    beq = gear_one.bs / gear_one.b
     if beq < 0.2:
         beq = 0.2
     elif beq > 1.2:
         beq = 1.2
-
-    if pair.gear_one.sr is None:
-        srm = 1
+            
+    # Gear blank factor
+    if gear_one.sr == 'solid':  
+        srm = 2
+        cr = 1    
     else:
-        srm = pair.gear_one.sr / pair.gear_one.m
+        srm = gear_one.sr / gear_one.m
+        if srm < 1:
+            srm = 1
+        cr = 1 + (log(beq) / (5 * exp(srm / (5 * pair.gear_one.m))))
     
-    if srm < 1:
-        srm = 1
-
-    cth = 1 / qp
-
-    cm = 0.8
-    cr = 1 + (log(beq) / (5 * exp(srm / (5 * pair.gear_one.m))))
-    cb = 0.975
-    cp = cth * cm * cr * cb * cos(radians(pair.gear_one.beta))
+    hf_p = gear_one.profile.hf_p
+    alpha_pn = gear_one.profile.alpha_pn
+    m = gear_one.m
+    
+    cb = (1 + 0.5*(1.2 - hf_p/m))*(1 - 0.02*(20 - alpha_pn))
+    
+    e = 2*gear_one.material.e*gear_two.material.e/(gear_one.material.e + gear_two.material.e)
+    er = e/206000  # This is according to eq 88
+    cp = er * cth * cm * cr * cb * cos(radians(gear_one.beta))
+    
     cgammaalpha = cp * (0.75 * pair.epsilon_alpha + 0.25)
     if pair.epsilon_alpha < 1.2:
         cgammaalpha *= 0.9
@@ -42,7 +60,7 @@ def __c__(pair):
 
 def __yb__(gear, pair, fbx):
     material = gear.material.classification
-    sigmahlimit = gear.material.sh_limit
+    sigmahlimit = gear.material.sigma_h_lim
     v = pair.v
     yb = 0
 
@@ -100,8 +118,8 @@ def __kv__(pair):
     sr_one = pair.gear_one.sr
     sr_two = pair.gear_one.sr
     epsilon_gama = pair.epsilon_gama
-    # sh_limit_1 = pair.gear_one.sigmaHLimit
-    # sh_limit_2 = pair.gear_two.sigmaHLimit
+    # sigma_h_lim_1 = pair.gear_one.sigmaHLimit
+    # sigma_h_lim_2 = pair.gear_two.sigmaHLimit
     rho_one = pair.gear_one.material.density
     rho_two = pair.gear_two.material.density
     da_one = pair.gear_one.da
@@ -116,12 +134,12 @@ def __kv__(pair):
     material_two = pair.gear_two.material
     v = pair.v
     precision_grade = pair.gear_one.precision_grade
-    u = pair.u_real
+    u = pair.u
     z_one = pair.gear_one.z
 
     c_gamma_alpha, c_gamma_beta, cp = __c__(pair)
-    di_one = 0.0 if sr_one is None else df_one - 2 * sr_one
-    di_two = 0.0 if sr_two is None else df_two - 2 * sr_two
+    di_one = 0.0 if sr_one == 'solid' else df_one - 2 * sr_one
+    di_two = 0.0 if sr_two == 'solid' else df_two - 2 * sr_two
     dm_one = (da_one + df_one) / 2
     dm_two = (da_two + df_two) / 2
     q_one = di_one / dm_one
@@ -180,11 +198,11 @@ def __kv__(pair):
     elif epsilon_gama > 2.5:
         cv7 = 1
 
-    cay_one = 1. / 8 * (((pair.gear_one.material.sh_limit / 97.) - 18.45) ** 2) + 1.5
-    cay_two = 1. / 8 * (((pair.gear_two.material.sh_limit / 97.) - 18.45) ** 2) + 1.5
+    cay_one = 1. / 8 * (((pair.gear_one.material.sigma_h_lim / 97.) - 18.45) ** 2) + 1.5
+    cay_two = 1. / 8 * (((pair.gear_two.material.sigma_h_lim / 97.) - 18.45) ** 2) + 1.5
     cay = 0.5 * (cay_one + cay_two)
-    ya_one = __ya__(material_one, pair.gear_one.material.sh_limit, v, f_f_alpha_one, f_f_alpha_two)
-    ya_two = __ya__(material_two, pair.gear_two.material.sh_limit, v, f_f_alpha_one, f_f_alpha_two)
+    ya_one = __ya__(material_one, pair.gear_one.material.sigma_h_lim, v, f_f_alpha_one, f_f_alpha_two)
+    ya_two = __ya__(material_two, pair.gear_two.material.sigma_h_lim, v, f_f_alpha_one, f_f_alpha_two)
     ya = 0.5 * (ya_two + ya_one)
 
     # FIXME
@@ -222,8 +240,8 @@ def __kv__(pair):
 
 def __khb__(pair):
     fmt = pair.fmt
-    b = pair.gear_one.b
-    helixmodiffication = pair.gear_one.helix_modification
+    b = pair.gear_one.b 
+    helixmodiffication = pair.gear_one.helix_modification   # DAOST: Why are not both gears taken into account? 
     d = pair.gear_one.d
     shaftdiameter = pair.gear_one.shaft_diameter
     schema = pair.gear_one.schema
@@ -231,9 +249,9 @@ def __khb__(pair):
     s = pair.gear_one.s
     fhbone = pair.gear_one.f_h_beta
     fhbtwo = pair.gear_two.f_h_beta
-    fhbeta5one = pair.gear_one.f_h_beta5
-    fhbeta5two = pair.gear_two.f_h_beta5
-    fav = pair.gear_one.favorable_contact
+    fhbeta6one = pair.gear_one.f_h_beta6
+    fhbeta6two = pair.gear_two.f_h_beta6
+    favorable_contact = pair.favorable_contact
     kp = 0
     b1 = 0
     b2 = 0
@@ -288,16 +306,13 @@ def __khb__(pair):
             kp = -0.6
 
     factemp = (stiff ** 4) * ((l * s) / (d ** 2))
-    fsh = fm_b * 0.023 * (abs(1 + kp * factemp - 0.3) + 0.3) * ((b / d) ** 2)
+    fsh = fm_b * 0.023 * (abs(1 + kp * factemp - 0.3) + 0.3) * ((b / d) ** 2)    #eq 57, TODO: Add B* for multiple pinion support 
     fma = sqrt(fhbone ** 2 + fhbtwo ** 2)
 
-    if fhbeta5one > fhbeta5two:
-        fhb5 = fhbeta5one
-    else:
-        fhb5 = fhbeta5two
+    fhb6 = max(fhbeta6one, fhbeta6two)
 
-    if fav == 1:
-        fbx = abs(1.33 * b1 * fsh - fhb5)
+    if favorable_contact:
+        fbx = abs(1.33 * b1 * fsh - fhb6)  #This equation has been fixed according to the errata in the standard
     else:
         fbx = 1.33 * b1 * fsh + b2 * fma
 
@@ -348,8 +363,8 @@ def __var__(pair):
     cgammaalpha = __c__(pair)[0]
     fmt = pair.fmt
 
-    yaone = __ya__(materialone, pair.gear_one.material.sh_limit, v, ffalphaone, ffalphatwo)
-    yatwo = __ya__(materialtwo, pair.gear_two.material.sh_limit, v, ffalphaone, ffalphatwo)
+    yaone = __ya__(materialone, pair.gear_one.material.sigma_h_lim, v, ffalphaone, ffalphatwo)
+    yatwo = __ya__(materialtwo, pair.gear_two.material.sigma_h_lim, v, ffalphaone, ffalphatwo)
     ya = 0.5 * (yatwo + yaone)
 
     if kv * fmt < 100:
@@ -430,7 +445,7 @@ class Pitting(object):
         :return:
         """
         pair = self.transmission
-        u = pair.u_real
+        u = pair.u
 
         """
 
@@ -451,24 +466,28 @@ class Pitting(object):
         zx = 1
 
         kv = __kv__(pair)
-        khb = __khb__(pair)
-        kha = __kha__(pair)
+        
+        if pair.k_h_beta is None:
+            pair.k_h_beta = __khb__(pair)
+            
+        if pair.k_h_alpha is None:
+            pair.k_h_alpha = __kha__(pair)
+            
+        sigma_h0 = zh * ze * z_epsilon * z_beta * sqrt((pair.ft * (u + 1)) / (pair.gear_one.d * pair.gear_one.b * u))
+        sigma_h_one = zb * sigma_h0 * sqrt(pair.ka * kv * pair.k_h_beta * pair.k_h_alpha)
+        sigma_h_two = zd * sigma_h0 * sqrt(pair.ka * kv * pair.k_h_beta * pair.k_h_alpha)
 
-        sigmah0 = zh * ze * z_epsilon * z_beta * sqrt((pair.ft * (u + 1)) / (pair.gear_one.d * pair.gear_one.b * u))
-        sigmahone = zb * sigmah0 * sqrt(pair.ka * kv * khb * kha)
-        sigmahtwo = zd * sigmah0 * sqrt(pair.ka * kv * khb * kha)
-
-        sigmahpone = pair.gear_one.material.sh_limit * znt_one * zl * zv * zr * zw_one * zx / pair.sh_min
-        sigmahptwo = pair.gear_two.material.sh_limit * znt_two * zl * zv * zr * zw_two * zx / pair.sh_min
-
-        sh_one = znt_one * zl * zv * zr * zw_one * zx / sigmahone
-        sh_two = znt_two * zl * zv * zr * zw_two * zx / sigmahtwo
+        sigma_hp_one = pair.gear_one.material.sigma_h_lim * znt_one * zl * zv * zr * zw_one * zx / pair.sh_min
+        sigma_hp_two = pair.gear_two.material.sigma_h_lim * znt_two * zl * zv * zr * zw_two * zx / pair.sh_min
+ 
+        sh_one = znt_one * zl * zv * zr * zw_one * zx / sigma_h_one   # eq 6
+        sh_two = znt_two * zl * zv * zr * zw_two * zx / sigma_h_two
 
         return {
-            'sigmaH': sigmahone,
-            'sigmaHTwo': sigmahtwo,
-            'sigmaHPOne': sigmahpone,
-            'sigmaHPTwo': sigmahptwo,
+            'sigma_h': sigma_h_one,
+            'sigma_h_two': sigma_h_two,
+            'sigma_hp_one': sigma_hp_one,
+            'sigma_hp_two': sigma_hp_two,
             'zh': zh,
             'zb': zb,
             'zd': zd,
@@ -484,8 +503,8 @@ class Pitting(object):
             'zw_two': zw_two,
             'zx': zx,
             'kv': kv,
-            'khb': khb,
-            'kha': kha,
+            'k_h_beta': pair.k_h_beta,
+            'k_h_alpha': pair.k_h_alpha,
             'sh_one': sh_one,
             'sh_two': sh_two
         }
@@ -597,25 +616,23 @@ class Pitting(object):
 
     @staticmethod
     def __czl(pair):
-        sh_limit_1 = pair.gear_one.material.sh_limit
-        sh_limit_2 = pair.gear_two.material.sh_limit
-        if sh_limit_1 < sh_limit_2:
-            sh_min = sh_limit_1
-        else:
-            sh_min = sh_limit_2
+        sigma_h_lim_1 = pair.gear_one.material.sigma_h_lim
+        sigma_h_lim_2 = pair.gear_two.material.sigma_h_lim
+        sigma_h_min = min(sigma_h_lim_1, sigma_h_lim_2)
 
-        if 850 <= sh_min <= 1200:
-            czl = (sh_min / 437.5) + 0.6357
-        elif 850 > sh_min:
+        if 850 <= sigma_h_min <= 1200:
+            czl = (sigma_h_min / 4375) + 0.6357
+        elif 850 > sigma_h_min:
             czl = 0.83
         else:
             czl = 0.91
+            
         return czl
 
     def __zl(self, pair):
         czl = self.__czl(pair)
         v40 = self.transmission.v40
-        return czl + 4.0 * (1.0 - czl) / (1.2 + 134.0 / v40) ** 2
+        return czl + 4.0*(1.0 - czl)/(1.2 + 134.0/v40)**2
 
     def __zv(self, pair):
         v = pair.v
@@ -625,24 +642,21 @@ class Pitting(object):
     def __zr(self, pair):
         rz_one = pair.gear_one.rz
         rz_two = pair.gear_two.rz
-        sh_limit_1 = pair.gear_one.material.sh_limit
-        sh_limit_2 = pair.gear_one.material.sh_limit
+        sigma_h_lim_1 = pair.gear_one.material.sigma_h_lim
+        sigma_h_lim_2 = pair.gear_one.material.sigma_h_lim
+        sigma_h_min = min(sigma_h_lim_1, sigma_h_lim_2)
+        
         czr = 0
-
-        if sh_limit_1 < sh_limit_2:
-            sh_min = sh_limit_1
-        else:
-            sh_min = sh_limit_2
 
         rz = (rz_one + rz_two) / 2.
 
         rz10 = rz * ((10.0 / self.__r_red(pair)) ** (1. / 3.))
 
-        if 850 <= sh_min <= 1200:
-            czr = 0.32 - 0.0002 * sh_min
-        if 850 > sh_min:
+        if 850 <= sigma_h_min <= 1200:
+            czr = 0.32 - 0.0002 * sigma_h_min
+        if 850 > sigma_h_min:
             czr = 0.15
-        if 1200 < sh_min:
+        if 1200 < sigma_h_min:
             czr = 0.08
 
         return (3.0 / rz10) ** czr
@@ -703,8 +717,8 @@ class Bending(object):
         pair.gear_one.b = gear_one.b
         btwo = gear_two.b
         m = gear_one.m
-        sigmaflimitone = gear_one.material.sf_limit
-        sigmaflimittwo = gear_two.material.sf_limit
+        sigma_f_lim_one = gear_one.material.sigma_f_lim
+        sigma_f_lim_two = gear_two.material.sigma_f_lim
 
         yst = self.__yst()
         yxone = self.__yx(gear_one)
@@ -725,23 +739,23 @@ class Bending(object):
         kfa = __kfa__(pair)
         kfb = __kfb__(pair)
 
-        sigmaf0one = pair.ft / (pair.gear_one.b * m) * yfone * ysone * ybeta * ybone * ydt
-        sigmaf0two = pair.ft / (btwo * m) * yftwo * ystwo * ybeta * ybtwo * ydt
+        sigma_f0_one = pair.ft / (pair.gear_one.b * m) * yfone * ysone * ybeta * ybone * ydt
+        sigma_f0_two = pair.ft / (btwo * m) * yftwo * ystwo * ybeta * ybtwo * ydt
 
-        sigmafone = sigmaf0one * pair.ka * kv * kfb * kfa
-        sigmaftwo = sigmaf0two * pair.ka * kv * kfb * kfa
+        sigma_f_one = sigma_f0_one * pair.ka * kv * kfb * kfa
+        sigma_f_two = sigma_f0_two * pair.ka * kv * kfb * kfa
 
-        sigmafpone = sigmaflimitone * yst * yntone * ydeltaone * yrelone * yxone / sfmin
-        sigmafptwo = sigmaflimittwo * yst * ynttwo * ydeltatwo * yreltwo * yxtwo / sfmin
+        sigma_fp_one = sigma_f_lim_one * yst * yntone * ydeltaone * yrelone * yxone / sfmin
+        sigma_fp_two = sigma_f_lim_two * yst * ynttwo * ydeltatwo * yreltwo * yxtwo / sfmin
 
-        sf_one = sigmaflimitone * ysone * yntone * ydeltaone * yrelone / sigmafone
-        sf_two = sigmaflimittwo * ystwo * ynttwo * ydeltatwo * yreltwo / sigmaftwo
+        sf_one = sigma_f_lim_one * ysone * yntone * ydeltaone * yrelone / sigma_f_one
+        sf_two = sigma_f_lim_two * ystwo * ynttwo * ydeltatwo * yreltwo / sigma_f_two
 
         return {
-            'sigmafone': sigmafone,
-            'sigmaftwo': sigmaftwo,
-            'sigmafpone': sigmafpone,
-            'sigmafptwo': sigmafptwo,
+            'sigma_f_one': sigma_f_one,
+            'sigma_f_two': sigma_f_two,
+            'sigma_fp_one': sigma_fp_one,
+            'sigma_fp_two': sigma_fp_two,
             'yst': yst,
             'yxone': yxone,
             'yxtwo': yxtwo,
@@ -846,36 +860,36 @@ class Bending(object):
 
     @staticmethod
     def __rho(gear):
-        sigmaflimit = gear.material.sf_limit
+        sigma_f_lim = gear.material.sigma_f_lim
         material = gear.material.classification
         rho = 0
 
         if material == 'GG' or material == 'GGG(ferr)':
-            if sigmaflimit <= 150:
+            if sigma_f_lim <= 150:
                 rho = 0.3124
-            elif sigmaflimit >= 300:
+            elif sigma_f_lim >= 300:
                 rho = 0.3095
             else:
-                rho = interp(sigmaflimit, [150, 300], [0.3124, 0.3095])
+                rho = interp(sigma_f_lim, [150, 300], [0.3124, 0.3095])
 
         elif material == 'GGG(perl)' or material == 'V' or material == 'GTS':
-            if sigmaflimit <= 500:
+            if sigma_f_lim <= 500:
                 rho = 0.0281
-            elif sigmaflimit >= 1000:
+            elif sigma_f_lim >= 1000:
                 rho = 0.0014
             else:
-                rho = interp(sigmaflimit, [500, 600, 800, 1000], [0.0281, 0.0194, 0.0064, 0.0014])
+                rho = interp(sigma_f_lim, [500, 600, 800, 1000], [0.0281, 0.0194, 0.0064, 0.0014])
 
         elif material == 'NT' or material == 'NV(nitrocar)' or material == 'NV(nitr)':
             rho = 0.1005
 
         elif material == 'St':
-            if sigmaflimit <= 300:
+            if sigma_f_lim <= 300:
                 rho = 0.0833
-            elif sigmaflimit >= 400:
+            elif sigma_f_lim >= 400:
                 rho = 0.0445
             else:
-                rho = interp(sigmaflimit, [300, 400], [0.0833, 0.445])
+                rho = interp(sigma_f_lim, [300, 400], [0.0833, 0.445])
 
         elif material == 'Eh' or material == 'IF':
             rho = 0.003
@@ -901,7 +915,7 @@ class Bending(object):
         sr = gear.sr
         h = gear.h
         
-        if sr is None:
+        if sr == 'solid':
             srh = 1.21
         else:
             srh = sr / h
@@ -955,9 +969,9 @@ class Bending(object):
         beta = radians(pair.gear_one.beta)
         betab = radians(pair.gear_one.beta_b)
         alpha = radians(pair.gear_one.alpha)
-        hfp = pair.gear_one.profile.hf_p * m
+        hfp = pair.gear_one.profile.hf_p
         hap = pair.gear_one.profile.ha_p
-        rhofp = pair.gear_one.profile.rho_fp * m
+        rhofp = pair.gear_one.profile.rho_fp
         thetaone = 0
         thetatwo = 0
 
